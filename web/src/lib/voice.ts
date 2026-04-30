@@ -1,10 +1,70 @@
 /** Wrappers for the browser Speech Recognition and Speech Synthesis APIs (dictation + read-aloud). */
 
+function getRecognitionCtor(): (new () => SpeechRecognition) | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as Window & { webkitSpeechRecognition?: new () => SpeechRecognition };
+  return window.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+/** Standard SpeechRecognition vs webkit-only (Safari): behaviour differs for continuous mode. */
+function isWebKitSpeechOnly(): boolean {
+  if (typeof window === 'undefined') return false;
+  const w = window as Window & { webkitSpeechRecognition?: unknown };
+  return !!w.webkitSpeechRecognition && !window.SpeechRecognition;
+}
+
 export function speechApisSupported(): { listen: boolean; speak: boolean } {
   if (typeof window === 'undefined') return { listen: false, speak: false };
-  const listen = !!(window.SpeechRecognition || (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition);
+  const ctor = getRecognitionCtor();
+  const secure = typeof window.isSecureContext === 'boolean' ? window.isSecureContext : true;
+  const listen = !!ctor && secure;
   const speak = typeof window.speechSynthesis !== 'undefined';
   return { listen, speak };
+}
+
+/**
+ * Non-fatal heads-up for environments where the API exists but rarely works well (esp. iOS browsers).
+ */
+export function voiceEnvironmentWarning(): string | null {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return null;
+  if (!window.isSecureContext) {
+    return 'Voice needs a secure page (https://). Open the site over HTTPS, not plain HTTP.';
+  }
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    return 'iPhone/iPad browsers often block web speech-to-text. For voice, use Chrome or Edge on a desktop or laptop, or Chrome on Android.';
+  }
+  return null;
+}
+
+/**
+ * Many Chromium/WebKit builds only unlock speech recognition reliably after the mic was opened once via getUserMedia.
+ */
+export async function primeMicrophone(): Promise<{ ok: boolean; message?: string }> {
+  if (typeof navigator === 'undefined') return { ok: true };
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return { ok: true };
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    return { ok: true };
+  } catch (e) {
+    const err = e as DOMException;
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      return {
+        ok: false,
+        message:
+          'Microphone blocked — click the lock or tune icon in the address bar, allow Microphone, then try again.',
+      };
+    }
+    if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      return { ok: false, message: 'No microphone found — connect one or check system sound input settings.' };
+    }
+    if (err.name === 'NotReadableError') {
+      return { ok: false, message: 'Microphone is in use by another app — close other tabs or apps using the mic.' };
+    }
+    return { ok: false, message: 'Could not open the microphone — check permissions and try again.' };
+  }
 }
 
 /** BCP-47 tags for recognition / synthesis (best-effort per app language code). */
@@ -142,14 +202,6 @@ export function speakAloud(text: string, langTag: string): Promise<void> {
   });
 }
 
-type RecognitionCtor = new () => SpeechRecognition;
-
-function getRecognitionCtor(): RecognitionCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as Window & { webkitSpeechRecognition?: RecognitionCtor };
-  return window.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
-
 export type VoiceListenCallbacks = {
   onUpdate: (fullTranscript: string) => void;
   onError: (message: string) => void;
@@ -158,18 +210,22 @@ export type VoiceListenCallbacks = {
 
 const IGNORABLE_RECOGNITION_ERRORS = new Set(['aborted']);
 
-/** Start continuous dictation until aborted via returned stop(). */
+/**
+ * Start dictation until aborted via returned stop().
+ * WebKit/Safari often fails with continuous=true (immediate stop, no audio). Chromium tolerates continuous well.
+ */
 export function startListening(langTag: string, cb: VoiceListenCallbacks): () => void {
   const Ctor = getRecognitionCtor();
   if (!Ctor) {
-    cb.onError('Voice input is not supported in this browser.');
+    cb.onError('Voice input is not supported in this browser — try Chrome or Edge on desktop.');
     return () => {};
   }
 
   let accumulated = '';
   const rec = new Ctor();
   rec.lang = langTag;
-  rec.continuous = true;
+  const webkitOnly = isWebKitSpeechOnly();
+  rec.continuous = !webkitOnly;
   rec.interimResults = true;
   rec.maxAlternatives = 1;
 
@@ -187,16 +243,16 @@ export function startListening(langTag: string, cb: VoiceListenCallbacks): () =>
     if (IGNORABLE_RECOGNITION_ERRORS.has(event.error)) return;
     const friendly =
       event.error === 'not-allowed'
-        ? 'Microphone permission denied — enable it in your browser settings.'
+        ? 'Microphone permission denied — allow the mic for this site in your browser settings.'
         : event.error === 'no-speech'
-          ? 'No speech detected — tap the mic and speak again, a little closer.'
+          ? 'No speech captured — speak right after tapping the mic; check input volume.'
           : event.error === 'audio-capture'
-            ? 'No microphone found — plug one in or allow access.'
+            ? 'Could not read audio — allow microphone access or try another browser.'
             : event.error === 'network'
-              ? 'Voice recognition needs a network connection in this browser — try again.'
+              ? 'Speech recognition needs internet in Chrome — check connection and try again.'
               : event.error === 'service-not-allowed'
-                ? 'Voice recognition is disabled — check browser settings.'
-                : `Voice error (${event.error}). Try again.`;
+                ? 'Speech recognition is disabled in this browser — enable it in settings or try Chrome.'
+                : `Voice error (${event.error}). Try Chrome/Edge on desktop.`;
     cb.onError(friendly);
   };
 
@@ -207,7 +263,7 @@ export function startListening(langTag: string, cb: VoiceListenCallbacks): () =>
   try {
     rec.start();
   } catch {
-    cb.onError('Could not start microphone — try refreshing the page.');
+    cb.onError('Could not start microphone — refresh the page and try again.');
     return () => {};
   }
 

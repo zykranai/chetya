@@ -18,10 +18,12 @@ import { APP_LANGUAGES } from '@/constants/languages';
 import {
   bcp47ForAppLanguage,
   ensureVoicesLoaded,
+  primeMicrophone,
   speechApisSupported,
   startListening,
   speakAloud,
   stopSpeaking,
+  voiceEnvironmentWarning,
 } from '@/lib/voice';
 import { friendlyApiError } from '@/lib/apiErrors';
 
@@ -120,6 +122,7 @@ type ChatPageProps = { guest?: boolean };
 
 export function ChatPage({ guest = false }: ChatPageProps) {
   const apis = useMemo(() => speechApisSupported(), []);
+  const voiceEnvHint = useMemo(() => voiceEnvironmentWarning(), []);
   const [guestLang, setGuestLang] = useState('en');
   const [guestRemaining, setGuestRemaining] = useState<number | null>(null);
   const [chatSessionId, setChatSessionId] = useState<string | null>(() =>
@@ -351,9 +354,13 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     }
   };
 
-  const toggleMic = () => {
+  const toggleMic = async () => {
     if (!apis.listen) {
-      setErr('Voice input needs Chrome / Edge / Safari (desktop) with microphone access.');
+      setErr(
+        typeof window !== 'undefined' && window.isSecureContext === false
+          ? 'Voice needs HTTPS — open this site with https:// (localhost is OK for development).'
+          : 'Voice input needs Chrome or Edge (desktop recommended). Firefox does not support web speech-to-text yet.'
+      );
       return;
     }
     if (loading) return;
@@ -368,6 +375,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     if (voiceAutosendTimerRef.current !== null) {
       window.clearTimeout(voiceAutosendTimerRef.current);
       voiceAutosendTimerRef.current = null;
+    }
+    const primed = await primeMicrophone();
+    if (!primed.ok) {
+      setErr(primed.message ?? 'Could not access the microphone.');
+      return;
     }
     void ensureVoicesLoaded();
     const langTag = bcp47ForAppLanguage(language);
@@ -856,6 +868,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           {/* Composer — ChatGPT-style pill */}
           <div className="shrink-0 border-t border-chetya-border/50 bg-gradient-to-t from-chetya-bg via-chetya-bg to-transparent px-3 pb-4 pt-2 md:px-4">
             <div className="mx-auto max-w-3xl">
+              {apis.listen && voiceEnvHint && (
+                <p className="mb-2 rounded-xl border border-amber-500/25 bg-amber-950/25 px-3 py-2 text-[11px] leading-relaxed text-amber-100/90">
+                  {voiceEnvHint}
+                </p>
+              )}
               <details className="mb-2 rounded-xl border border-white/[0.06] bg-chetya-panel/35 px-3 py-2 text-left backdrop-blur-sm open:border-chetya-border/50">
                 <summary className="cursor-pointer select-none text-xs font-medium text-chetya-muted outline-none hover:text-chetya-cream/90 [&::-webkit-details-marker]:hidden">
                   Your situation (optional — helps Guru tailor Plan A / Plan B){' '}
@@ -882,7 +899,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 {apis.listen && (
                   <button
                     type="button"
-                    onClick={toggleMic}
+                    onClick={() => void toggleMic()}
                     disabled={loading || !apis.listen || guestExhausted}
                     title={apis.listen ? (isListening ? 'Stop listening' : 'Speak') : 'Voice not supported'}
                     aria-pressed={isListening}

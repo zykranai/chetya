@@ -6,7 +6,9 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .models import ChatMessage, ChatSession, ReadingRecord, User, UserChart
+from .models import ChatMessage, ChatSession, GuestQuota, ReadingRecord, User, UserChart
+
+GUEST_PROMPT_LIMIT = 6
 
 
 class SessionForbidden(Exception):
@@ -153,6 +155,27 @@ def list_chat_sessions(db: Session, user_id: str, limit: int = 30) -> list[dict[
         }
         for r in rows
     ]
+
+
+def guest_prompts_remaining(db: Session, guest_id: str) -> int:
+    row = db.get(GuestQuota, guest_id)
+    used = row.prompts_used if row else 0
+    return max(0, GUEST_PROMPT_LIMIT - used)
+
+
+def increment_guest_prompt(db: Session, guest_id: str) -> int:
+    """Add one used prompt; return prompts remaining after increment."""
+    row = db.get(GuestQuota, guest_id)
+    now = datetime.utcnow()
+    if row is None:
+        row = GuestQuota(guest_id=guest_id, prompts_used=1, updated_at=now)
+        db.add(row)
+    else:
+        row.prompts_used = row.prompts_used + 1
+        row.updated_at = now
+    db.commit()
+    db.refresh(row)
+    return max(0, GUEST_PROMPT_LIMIT - row.prompts_used)
 
 
 def get_session_messages(db: Session, user_id: str, session_id: str) -> list[dict[str, str]]:

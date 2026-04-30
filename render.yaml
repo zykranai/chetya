@@ -1,0 +1,22 @@
+# Render Blueprint starter — connect repo in Render → Blueprints → apply.
+# Set DATABASE_URL (from Neon/Supabase) and secrets in the dashboard.
+
+services:
+  - type: web
+    name: chetya-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: CHETYA_JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false

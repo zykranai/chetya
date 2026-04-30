@@ -9,12 +9,36 @@ body,
 }
 
 body {
-  @apply bg-chetya-bg text-chetya-cream font-sans;
+  @apply bg-chetya-bg text-chetya-cream font-sans antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  @apply bg-chetya-gold/35 text-chetya-cream;
+}
+
+/* Scrollbars — subtle, app-like */
+.chetya-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(138, 133, 128, 0.35) transparent;
+}
+
+.chetya-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.chetya-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chetya-scroll::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-chetya-muted/25 hover:bg-chetya-muted/40;
 }
 
 @layer components {
   .input {
-    @apply w-full rounded-xl border border-chetya-border bg-chetya-panel px-4 py-2.5 text-chetya-cream placeholder:text-chetya-muted/50 focus:border-chetya-gold focus:outline-none focus:ring-1 focus:ring-chetya-gold;
+    @apply w-full rounded-xl border border-chetya-border bg-chetya-panel px-4 py-2.5 text-chetya-cream transition-colors duration-200 placeholder:text-chetya-muted/50 focus:border-chetya-gold focus:outline-none focus:ring-2 focus:ring-chetya-gold/25;
   }
 }
 
@@ -40,7 +64,7 @@ body {
     opacity: 0.35;
   }
   40% {
-    transform: translateY(-6px);
+    transform: translateY(-5px);
     opacity: 1;
   }
 }
@@ -55,4 +79,19 @@ body {
 
 .chetya-typing-dot:nth-child(3) {
   animation-delay: 0.3s;
+}
+
+@keyframes chetya-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chetya-message-enter {
+  animation: chetya-msg-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

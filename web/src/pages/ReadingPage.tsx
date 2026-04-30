@@ -62,9 +62,9 @@ export function ReadingPage() {
 
   if (result && !result.startsWith('Error:')) {
     return (
-      <div className="flex h-full flex-col">
-        <header className="border-b border-chetya-border px-4 py-3">
-          <h1 className="text-lg font-semibold text-chetya-cream">Your reading</h1>
+      <div className="flex h-full flex-col bg-chetya-bg">
+        <header className="border-b border-chetya-border/60 bg-chetya-bg/90 px-4 py-3 backdrop-blur-md">
+          <h1 className="text-[15px] font-semibold tracking-tight text-chetya-cream">Your reading</h1>
         </header>
         <div className="flex-1 overflow-y-auto p-4">
           <pre className="mx-auto max-w-4xl whitespace-pre-wrap font-mono text-sm text-chetya-cream/90">
@@ -85,10 +85,10 @@ export function ReadingPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-chetya-border px-4 py-3">
-        <h1 className="text-lg font-semibold text-chetya-cream">Birth chart reading</h1>
-        <p className="text-xs text-chetya-muted">
+    <div className="flex h-full min-h-0 flex-col bg-chetya-bg">
+      <header className="shrink-0 border-b border-chetya-border/60 bg-chetya-bg/90 px-4 py-3 backdrop-blur-md">
+        <h1 className="text-[15px] font-semibold tracking-tight text-chetya-cream">Birth chart reading</h1>
+        <p className="mt-1 text-xs leading-relaxed text-chetya-muted">
           Details are saved to your account for guru chat. Requires Google Maps API for place lookup on the
           server.
         </p>

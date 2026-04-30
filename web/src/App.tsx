@@ -3,16 +3,24 @@ import { ProtectedLayout } from '@/components/ProtectedLayout';
 import { LoginPage } from '@/pages/LoginPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { ReadingPage } from '@/pages/ReadingPage';
+import { useAuthStore } from '@/store/authStore';
+
+function GuestTryRoute() {
+  const token = useAuthStore((s) => s.token);
+  if (token) return <Navigate to="/chat" replace />;
+  return <ChatPage guest />;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<ProtectedLayout />}>
-          <Route index element={<Navigate to="chat" replace />} />
-          <Route path="chat" element={<ChatPage />} />
-          <Route path="reading" element={<ReadingPage />} />
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/try" element={<GuestTryRoute />} />
+        <Route element={<ProtectedLayout />}>
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/reading" element={<ReadingPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

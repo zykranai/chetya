@@ -93,7 +93,8 @@ Writes to **`docs/_generated/`** (ignored by git). Useful for offline prompt rev
 
 ## Ops notes
 
-- PostgreSQL locally or hosted: see `docker-compose.yml`; set `DATABASE_URL`.
+- PostgreSQL locally or hosted: see `docker-compose.yml`; set `DATABASE_URL` (use `postgresql+psycopg://…` with `psycopg` from `backend/requirements.txt`).
+- **Production deploy** (free Postgres + hosted API + static web): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Repo includes a root **`Dockerfile`** for the API and **`render.yaml`** as a Render Blueprint starter.
 - Never commit `.env`, `*.sqlite`, `node_modules`, `.venv`, or `.tools/`.
 
 ## Versioning

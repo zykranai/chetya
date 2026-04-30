@@ -11,6 +11,29 @@ export const api: AxiosInstance = axios.create({
   timeout: 120000,
 });
 
+/** Anonymous trial chat — no Bearer token (uses X-Chetya-Guest-Id). */
+export const guestApi: AxiosInstance = axios.create({
+  baseURL,
+  timeout: 120000,
+});
+
+const GUEST_STORAGE_KEY = 'chetya_guest_id';
+
+export function getOrCreateGuestId(): string {
+  try {
+    let id = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(GUEST_STORAGE_KEY, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+export const GUEST_PROMPT_LIMIT = 6;
+
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -65,6 +88,34 @@ export async function sendChat(messages: ChatMessage[], sessionId?: string | nul
     messages,
     session_id: sessionId || undefined,
   });
+  return data;
+}
+
+export type GuestChatResponse = {
+  success?: boolean;
+  message: ChatMessage;
+  session_id: null;
+  guest_prompts_remaining: number;
+};
+
+export async function fetchGuestQuota(): Promise<{ remaining: number; limit: number }> {
+  const guestId = getOrCreateGuestId();
+  const { data } = await guestApi.get<{
+    guest_prompts_remaining: number;
+    guest_prompt_limit: number;
+  }>('/guest/quota', {
+    headers: { 'X-Chetya-Guest-Id': guestId },
+  });
+  return { remaining: data.guest_prompts_remaining, limit: data.guest_prompt_limit };
+}
+
+export async function sendGuestChat(messages: ChatMessage[], language: string) {
+  const guestId = getOrCreateGuestId();
+  const { data } = await guestApi.post<GuestChatResponse>(
+    '/chat/guest',
+    { messages, language },
+    { headers: { 'X-Chetya-Guest-Id': guestId } }
+  );
   return data;
 }
 

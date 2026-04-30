@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal, Optional
 
-import uuid
+import uuid as uuid_mod
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,6 +79,11 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     session_id: Optional[str] = None
+
+
+class GuestChatRequest(BaseModel):
+    messages: list[ChatMessage]
+    language: str = Field(default="en", max_length=32)
 
 
 class ReadingRequest(BaseModel):
@@ -208,7 +213,7 @@ def get_chat_messages(session_id: str, user: dict = Depends(get_current_user)):
 async def chat_with_guru(body: ChatRequest, user: dict = Depends(get_current_user)):
     if not body.messages:
         raise HTTPException(status_code=400, detail="messages required")
-    sid = (body.session_id or "").strip() or str(uuid.uuid4())
+    sid = (body.session_id or "").strip() or str(uuid_mod.uuid4())
 
     from .db.models import ChatSession as ChatSessionModel
 
@@ -249,4 +254,76 @@ async def chat_with_guru(body: ChatRequest, user: dict = Depends(get_current_use
         "success": True,
         "message": {"role": "assistant", "content": reply},
         "session_id": sid,
+    }
+
+
+def _parse_guest_id(
+    x_chetya_guest_id: Annotated[Optional[str], Header(alias="X-Chetya-Guest-Id")] = None,
+) -> str:
+    if not x_chetya_guest_id or not x_chetya_guest_id.strip():
+        raise HTTPException(status_code=400, detail="X-Chetya-Guest-Id header required")
+    try:
+        return str(uuid_mod.UUID(x_chetya_guest_id.strip()))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="X-Chetya-Guest-Id must be a valid UUID")
+
+
+@app.get("/guest/quota")
+def guest_quota(guest_id: Annotated[str, Depends(_parse_guest_id)]):
+    """Remaining free prompts for this guest UUID (requires X-Chetya-Guest-Id)."""
+    db = SessionLocal()
+    try:
+        remaining = repo.guest_prompts_remaining(db, guest_id)
+    finally:
+        db.close()
+    return {
+        "success": True,
+        "guest_prompts_remaining": remaining,
+        "guest_prompt_limit": repo.GUEST_PROMPT_LIMIT,
+    }
+
+
+@app.post("/chat/guest")
+async def chat_guest(
+    body: GuestChatRequest,
+    guest_id: Annotated[str, Depends(_parse_guest_id)],
+):
+    """
+    Anonymous trial: up to 6 user prompts per guest UUID (tracked server-side).
+    No chat history persistence; no saved chart — same grounding rules as signed-in users without a chart.
+    """
+    if not body.messages:
+        raise HTTPException(status_code=400, detail="messages required")
+
+    db_pre = SessionLocal()
+    try:
+        remaining_before = repo.guest_prompts_remaining(db_pre, guest_id)
+        if remaining_before <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail="You've used all 6 free questions. Sign in with your email for full conversations.",
+            )
+    finally:
+        db_pre.close()
+
+    lang = (body.language or "en").strip() or "en"
+    msgs = [m.model_dump() for m in body.messages]
+    reply = await run_astro_chat(
+        msgs,
+        computed_facts=None,
+        user_language=lang,
+        user_first_name="friend",
+    )
+
+    db_post = SessionLocal()
+    try:
+        prompts_left = repo.increment_guest_prompt(db_post, guest_id)
+    finally:
+        db_post.close()
+
+    return {
+        "success": True,
+        "message": {"role": "assistant", "content": reply},
+        "session_id": None,
+        "guest_prompts_remaining": prompts_left,
     }

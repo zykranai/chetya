@@ -29,6 +29,23 @@ def main() -> int:
         assert r.status_code == 200, r.text
         assert r.json().get("status") == "healthy"
 
+        gid = "00000000-0000-4000-8000-000000000001"
+        gh = {"X-Chetya-Guest-Id": gid}
+        r = client.get("/guest/quota", headers=gh)
+        assert r.status_code == 200, r.text
+        assert r.json().get("guest_prompt_limit") == 6
+
+        r = client.post(
+            "/chat/guest",
+            headers=gh,
+            json={"messages": [{"role": "user", "content": "Guest smoke question."}], "language": "en"},
+        )
+        assert r.status_code == 200, r.text
+        gbody = r.json()
+        assert gbody["message"]["role"] == "assistant"
+        assert gbody.get("session_id") is None
+        assert "guest_prompts_remaining" in gbody
+
         r = client.post("/auth/email", json={"email": "smoke@test.example", "language": "en"})
         assert r.status_code == 200, r.text
         tok = r.json()["access_token"]

@@ -64,6 +64,16 @@ class ChatSession(Base):
     )
 
 
+class GuestQuota(Base):
+    """Tracks free-tier prompt usage per anonymous browser id (from X-Chetya-Guest-Id)."""
+
+    __tablename__ = "guest_quotas"
+
+    guest_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    prompts_used: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 

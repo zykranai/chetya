@@ -119,10 +119,15 @@ export type ChatResponse = {
   session_id: string;
 };
 
-export async function sendChat(messages: ChatMessage[], sessionId?: string | null) {
+export async function sendChat(
+  messages: ChatMessage[],
+  sessionId?: string | null,
+  lifeContext?: string | null
+) {
   const { data } = await api.post<ChatResponse>('/chat', {
     messages,
     session_id: sessionId || undefined,
+    life_context: lifeContext?.trim() || undefined,
   });
   return data;
 }
@@ -145,11 +150,15 @@ export async function fetchGuestQuota(): Promise<{ remaining: number; limit: num
   return { remaining: data.guest_prompts_remaining, limit: data.guest_prompt_limit };
 }
 
-export async function sendGuestChat(messages: ChatMessage[], language: string) {
+export async function sendGuestChat(
+  messages: ChatMessage[],
+  language: string,
+  lifeContext?: string | null
+) {
   const guestId = getOrCreateGuestId();
   const { data } = await guestApi.post<GuestChatResponse>(
     '/chat/guest',
-    { messages, language },
+    { messages, language, life_context: lifeContext?.trim() || undefined },
     { headers: { 'X-Chetya-Guest-Id': guestId } }
   );
   return data;

@@ -24,6 +24,7 @@ import { friendlyApiError } from '@/lib/apiErrors';
 
 const SESSION_STORAGE_KEY = 'chetya_chat_session';
 const VOICE_REPLY_KEY = 'chetya_voice_reply_auto';
+const LIFE_CONTEXT_STORAGE_KEY = 'chetya_life_context_note';
 
 function formatSessionTime(iso: string | null): string {
   if (!iso) return '';
@@ -114,6 +115,14 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   const [loading, setLoading] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [lifeContext, setLifeContext] = useState(() => {
+    if (typeof sessionStorage === 'undefined') return '';
+    try {
+      return sessionStorage.getItem(LIFE_CONTEXT_STORAGE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [isListening, setIsListening] = useState(false);
   const [voiceReplyAuto, setVoiceReplyAuto] = useState(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_REPLY_KEY) === '1' : false
@@ -158,6 +167,16 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      if (lifeContext.trim()) sessionStorage.setItem(LIFE_CONTEXT_STORAGE_KEY, lifeContext);
+      else sessionStorage.removeItem(LIFE_CONTEXT_STORAGE_KEY);
+    } catch {
+      /* ignore quota */
+    }
+  }, [lifeContext]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -266,11 +285,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     setLoading(true);
     try {
       if (guest) {
-        const res = await sendGuestChat(next, language);
+        const res = await sendGuestChat(next, language, lifeContext);
         setMessages([...next, res.message]);
         setGuestRemaining(res.guest_prompts_remaining);
       } else {
-        const res = await sendChat(next, chatSessionId);
+        const res = await sendChat(next, chatSessionId, lifeContext);
         persistSessionId(res.session_id);
         const updated = [...next, res.message];
         setMessages(updated);
@@ -515,8 +534,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 </h2>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-chetya-muted">
                   {guest
-                    ? `You have ${GUEST_PROMPT_LIMIT} free questions in this trial — replies are not saved or remembered after you leave. Sign in for voice chat, saved threads, and chart-grounded depth.`
-                    : 'Ask about life themes, timing, or clarity. Save a birth chart reading first for the deepest context. Use the mic to speak, or type below — replies stay grounded in your chart data.'}
+                    ? `You have ${GUEST_PROMPT_LIMIT} free questions in this trial — replies are not saved or remembered after you leave. Use the optional situation note below so Guru can mirror your real constraints; sign in for chart-grounded depth, voice, and saved threads.`
+                    : 'Ask about decisions, timing, or clarity. Add a short situation note below (work, family, city) so replies stay practical. Save a birth chart reading for full chart grounding — then use the mic or type here.'}
                 </p>
               </div>
             )}
@@ -592,6 +611,28 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           {/* Composer — ChatGPT-style pill */}
           <div className="shrink-0 border-t border-chetya-border/50 bg-gradient-to-t from-chetya-bg via-chetya-bg to-transparent px-3 pb-4 pt-2 md:px-4">
             <div className="mx-auto max-w-3xl">
+              <details className="mb-2 rounded-xl border border-white/[0.06] bg-chetya-panel/35 px-3 py-2 text-left backdrop-blur-sm open:border-chetya-border/50">
+                <summary className="cursor-pointer select-none text-xs font-medium text-chetya-muted outline-none hover:text-chetya-cream/90 [&::-webkit-details-marker]:hidden">
+                  Your situation (optional — helps Guru tailor Plan A / Plan B){' '}
+                  {lifeContext.trim() ? (
+                    <span className="font-normal text-chetya-gold/80">· saved for this browser</span>
+                  ) : null}
+                </summary>
+                <p className="mt-2 text-[11px] leading-relaxed text-chetya-muted/85">
+                  A few lines about work, move, relationship, money pressure, or family — not instead of your chart,
+                  but so guidance fits your life. You stay in charge of decisions.
+                </p>
+                <textarea
+                  value={lifeContext}
+                  onChange={(e) => setLifeContext(e.target.value.slice(0, 1200))}
+                  rows={2}
+                  maxLength={1200}
+                  disabled={guestExhausted}
+                  placeholder="e.g. Interview next week in Bangalore; parents want marriage timeline; tight savings…"
+                  className="chetya-scroll mt-2 w-full resize-y rounded-lg border border-chetya-border/50 bg-chetya-bg/80 px-3 py-2 text-[13px] leading-relaxed text-chetya-cream placeholder:text-chetya-muted/40 focus:border-chetya-gold/30 focus:outline-none focus:ring-1 focus:ring-chetya-gold/20 disabled:opacity-50"
+                  aria-label="Optional note about your current life situation"
+                />
+              </details>
               <div className="shadow-composer flex items-end gap-2 rounded-[26px] border border-white/[0.08] bg-chetya-panel/95 p-2 pl-3 backdrop-blur-xl ring-1 ring-black/20 transition-shadow duration-300 focus-within:border-chetya-gold/35 focus-within:ring-2 focus-within:ring-chetya-gold/20">
                 {!guest && (
                   <button
@@ -648,7 +689,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 </button>
               </div>
               <p className="mt-2 text-center text-[11px] text-chetya-muted/70">
-                Chetya can make mistakes. Verify important life decisions with your own judgment.
+                Chetya offers perspective from classical Jyotisha — not guarantees. Cross-check money, health, and legal
+                choices with facts and people you trust.
                 {guest && (
                   <>
                     {' '}

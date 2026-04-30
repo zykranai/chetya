@@ -67,7 +67,11 @@ export interface ChatMessage {
   content: string;
 }
 
-export async function sendChatMessage(messages: ChatMessage[], sessionId?: string | null) {
+export async function sendChatMessage(
+  messages: ChatMessage[],
+  sessionId?: string | null,
+  lifeContext?: string | null
+) {
   const res = await api.post<{
     success?: boolean;
     message: ChatMessage;
@@ -75,6 +79,7 @@ export async function sendChatMessage(messages: ChatMessage[], sessionId?: strin
   }>('/chat', {
     messages,
     session_id: sessionId || undefined,
+    life_context: lifeContext?.trim() || undefined,
   });
   return res.data;
 }

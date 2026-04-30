@@ -16,6 +16,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [lifeContext, setLifeContext] = useState('');
   const [loading, setLoading] = useState(false);
   const listRef = useRef<FlatList>(null);
 
@@ -28,7 +29,7 @@ export default function ChatScreen() {
     setInput('');
     setLoading(true);
     try {
-      const data = await sendChatMessage(next, sessionId);
+      const data = await sendChatMessage(next, sessionId, lifeContext || undefined);
       setSessionId(data.session_id);
       setMessages([...next, data.message]);
     } catch {
@@ -48,9 +49,19 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Text style={styles.welcome}>
-        Namaste — this is your space. Share what is on your mind; your guru replies in the language you chose at
-        login.
+        Namaste — share what is on your mind. Optionally describe your situation below so replies stay practical (job,
+        family, money); your guru uses your chart when saved — you still decide.
       </Text>
+      <TextInput
+        style={styles.contextInput}
+        placeholder="Optional: your situation (work, city, relationship…)"
+        placeholderTextColor="#555"
+        value={lifeContext}
+        onChangeText={(t) => setLifeContext(t.slice(0, 1200))}
+        multiline
+        maxLength={1200}
+        editable={!loading}
+      />
       <FlatList
         ref={listRef}
         data={messages}
@@ -85,7 +96,20 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  welcome: { color: '#8a8068', fontSize: 14, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  welcome: { color: '#8a8068', fontSize: 14, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
+  contextInput: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#151518',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#e8e4dc',
+    fontSize: 14,
+    maxHeight: 72,
+    borderWidth: 1,
+    borderColor: '#2a2a32',
+  },
   list: { padding: 16, paddingBottom: 8 },
   bubble: {
     maxWidth: '88%',

@@ -83,11 +83,33 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     session_id: Optional[str] = None
+    life_context: Optional[str] = Field(
+        default=None,
+        max_length=2500,
+        description="Optional user-supplied life situation (job, family, constraints). Grounds replies; does not replace chart facts.",
+    )
+
+    @field_validator("life_context")
+    @classmethod
+    def strip_life_context(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        t = v.strip()
+        return t if t else None
 
 
 class GuestChatRequest(BaseModel):
     messages: list[ChatMessage]
     language: str = Field(default="en", max_length=32)
+    life_context: Optional[str] = Field(default=None, max_length=2500)
+
+    @field_validator("life_context")
+    @classmethod
+    def strip_life_guest(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        t = v.strip()
+        return t if t else None
 
 
 class ReadingRequest(BaseModel):
@@ -258,6 +280,7 @@ async def chat_with_guru(body: ChatRequest, user: dict = Depends(get_current_use
         computed_facts=computed,
         user_language=lang,
         user_first_name=first,
+        situation_note=body.life_context,
     )
     full = msgs + [{"role": "assistant", "content": reply}]
     db_save = SessionLocal()
@@ -332,6 +355,7 @@ async def chat_guest(
         computed_facts=None,
         user_language=lang,
         user_first_name="friend",
+        situation_note=body.life_context,
     )
 
     db_post = SessionLocal()

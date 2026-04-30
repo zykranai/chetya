@@ -18,7 +18,6 @@ import { APP_LANGUAGES } from '@/constants/languages';
 import {
   bcp47ForAppLanguage,
   ensureVoicesLoaded,
-  primeMicrophone,
   speechApisSupported,
   startListening,
   speakAloud,
@@ -354,7 +353,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     }
   };
 
-  const toggleMic = async () => {
+  /**
+   * SpeechRecognition.start() must run in the same user-gesture turn as the mic click.
+   * Awaiting getUserMedia first drops transient activation in Chromium — recognition runs but often captures nothing.
+   */
+  const toggleMic = () => {
     if (!apis.listen) {
       setErr(
         typeof window !== 'undefined' && window.isSecureContext === false
@@ -376,12 +379,12 @@ export function ChatPage({ guest = false }: ChatPageProps) {
       window.clearTimeout(voiceAutosendTimerRef.current);
       voiceAutosendTimerRef.current = null;
     }
-    const primed = await primeMicrophone();
-    if (!primed.ok) {
-      setErr(primed.message ?? 'Could not access the microphone.');
-      return;
-    }
     void ensureVoicesLoaded();
+    /** Same click gesture as recognition.start() — do not await (breaks user activation in Chromium). */
+    let micWarm: Promise<MediaStream> | undefined;
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      micWarm = navigator.mediaDevices.getUserMedia({ audio: true });
+    }
     const langTag = bcp47ForAppLanguage(language);
     stopListenRef.current = startListening(langTag, {
       onUpdate: (t) => setInput(t),
@@ -406,6 +409,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
       },
     });
     setIsListening(true);
+    void micWarm
+      ?.then((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+      })
+      .catch(() => {});
   };
 
   const playAssistantLine = (content: string) => {
@@ -899,7 +907,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 {apis.listen && (
                   <button
                     type="button"
-                    onClick={() => void toggleMic()}
+                    onClick={toggleMic}
                     disabled={loading || !apis.listen || guestExhausted}
                     title={apis.listen ? (isListening ? 'Stop listening' : 'Speak') : 'Voice not supported'}
                     aria-pressed={isListening}

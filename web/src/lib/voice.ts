@@ -6,13 +6,6 @@ function getRecognitionCtor(): (new () => SpeechRecognition) | null {
   return window.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
-/** Standard SpeechRecognition vs webkit-only (Safari): behaviour differs for continuous mode. */
-function isWebKitSpeechOnly(): boolean {
-  if (typeof window === 'undefined') return false;
-  const w = window as Window & { webkitSpeechRecognition?: unknown };
-  return !!w.webkitSpeechRecognition && !window.SpeechRecognition;
-}
-
 export function speechApisSupported(): { listen: boolean; speak: boolean } {
   if (typeof window === 'undefined') return { listen: false, speak: false };
   const ctor = getRecognitionCtor();
@@ -212,7 +205,7 @@ const IGNORABLE_RECOGNITION_ERRORS = new Set(['aborted']);
 
 /**
  * Start dictation until aborted via returned stop().
- * WebKit/Safari often fails with continuous=true (immediate stop, no audio). Chromium tolerates continuous well.
+ * Note: start() must be invoked synchronously from a click/key handler (user gesture), or many browsers capture no audio.
  */
 export function startListening(langTag: string, cb: VoiceListenCallbacks): () => void {
   const Ctor = getRecognitionCtor();
@@ -223,17 +216,18 @@ export function startListening(langTag: string, cb: VoiceListenCallbacks): () =>
 
   let accumulated = '';
   const rec = new Ctor();
-  rec.lang = langTag;
-  const webkitOnly = isWebKitSpeechOnly();
-  rec.continuous = !webkitOnly;
+  rec.lang = langTag || 'en-US';
+  rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 1;
 
   rec.onresult = (event: SpeechRecognitionEvent) => {
     let interim = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const piece = event.results[i][0]?.transcript ?? '';
-      if (event.results[i].isFinal) accumulated += piece;
+      const row = event.results[i];
+      if (!row?.length) continue;
+      const piece = row[0]?.transcript ?? '';
+      if (row.isFinal) accumulated += piece;
       else interim += piece;
     }
     cb.onUpdate((accumulated + interim).trim());

@@ -1,0 +1,9 @@
+# Netlify SPA fallback (Cloudflare Pages uses built-in SPA mode when no root 404.html exists — do not duplicate /* → index.html there.)
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

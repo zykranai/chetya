@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { authWithEmail } from '@/api/client';
 import { friendlyApiError } from '@/lib/apiErrors';
 import { APP_LANGUAGES } from '@/constants/languages';
@@ -7,13 +7,22 @@ import { useAuthStore } from '@/store/authStore';
 
 export function LoginPage() {
   const token = useAuthStore((s) => s.token);
+  const location = useLocation();
+  const fromPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
   const [email, setEmail] = useState('');
   const [lang, setLang] = useState('en');
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (token) {
-    return <Navigate to="/chat" replace />;
+    const safeReturn =
+      fromPath &&
+      fromPath.startsWith('/') &&
+      !fromPath.startsWith('//') &&
+      fromPath !== '/' &&
+      !fromPath.startsWith('/login');
+    const to = safeReturn ? fromPath : '/chat';
+    return <Navigate to={to} replace />;
   }
 
   const submit = async (e: React.FormEvent) => {
@@ -82,6 +91,7 @@ export function LoginPage() {
               value={lang}
               onChange={(e) => setLang(e.target.value)}
               className="input w-full py-3"
+              aria-label="App language for guru replies"
             >
               {APP_LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -91,7 +101,9 @@ export function LoginPage() {
             </select>
           </div>
           {err && (
-            <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">{err}</p>
+            <p role="alert" aria-live="polite" className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
+              {err}
+            </p>
           )}
           <button
             type="submit"

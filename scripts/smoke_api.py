@@ -53,6 +53,20 @@ def main() -> int:
 
         r = client.get("/me", headers=h)
         assert r.status_code == 200, r.text
+        uid = r.json()["user_id"]
+
+        r = client.get(f"/reading/daily/{uid}", params={"language": "en"}, headers=h)
+        assert r.status_code in (200, 404), r.text
+
+        r = client.get(
+            "/reading/daily/00000000-0000-0000-0000-000000000099",
+            params={"language": "en"},
+            headers=h,
+        )
+        assert r.status_code == 403, r.text
+
+        r = client.get(f"/reading/daily/{uid}", params={"language": "en"})
+        assert r.status_code == 401, r.text
 
         r = client.post(
             "/chat",

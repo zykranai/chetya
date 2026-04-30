@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import logging
+import os
 from typing import Annotated, Literal, Optional
 
 import uuid as uuid_mod
@@ -18,6 +20,8 @@ from .db import repository as repo
 from .db.repository import SessionForbidden
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -125,12 +129,27 @@ async def generate(
                 pass
         reading = await generate_reading(user_intake=intake, geo_data=geo_data)
         return {"success": True, "data": reading}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("reading/generate failed: %s", e)
+        debug = os.getenv("CHETYA_DEBUG_READING_ERRORS", "").lower() in ("1", "true", "yes")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e) if debug else "We couldn't finish your reading right now. Check birth details and try again in a few minutes.",
+        )
 
 
 @app.get("/reading/daily/{user_id}")
-async def daily_reading(user_id: str, language: str = "en"):
+async def daily_reading(
+    user_id: str,
+    language: str = "en",
+    user: dict = Depends(get_current_user),
+):
+    if user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="You can only load your own daily reading.")
     chart = fetch_user_chart(user_id)
     if not chart:
         raise HTTPException(

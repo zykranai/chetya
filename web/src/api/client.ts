@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios';
+import axios, { type AxiosInstance, isAxiosError } from 'axios';
 import { useAuthStore } from '@/store/authStore';
 
 /**
@@ -52,6 +52,29 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+api.interceptors.response.use(
+  (res) => res,
+  (error: unknown) => {
+    if (!isAxiosError(error) || error.response?.status !== 401) {
+      return Promise.reject(error);
+    }
+    const cfg = error.config;
+    const url = typeof cfg?.url === 'string' ? cfg.url : '';
+    if (url.includes('/auth/email')) {
+      return Promise.reject(error);
+    }
+    useAuthStore.getState().logout();
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname || '';
+      const publicRoute = path === '/' || path === '/try' || path === '/login';
+      if (!publicRoute) {
+        window.location.assign('/');
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export type ReadingRequest = {
   name: string;

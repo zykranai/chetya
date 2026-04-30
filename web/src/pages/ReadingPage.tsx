@@ -1,6 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useId, type ReactNode } from 'react';
 import { generateReading, type ReadingRequest } from '@/api/client';
+import {
+  ReadingDisplay,
+  parseReadingPayload,
+  type ChartSummaryLite,
+  type ReadingJson,
+} from '@/components/ReadingDisplay';
 import { friendlyApiError } from '@/lib/apiErrors';
+import { APP_LANGUAGES } from '@/constants/languages';
 import { useAuthStore } from '@/store/authStore';
 
 const CONCERNS = [
@@ -13,11 +20,19 @@ const CONCERNS = [
   { key: 'general', label: 'Full life reading' },
 ];
 
+type ReadingViewModel = {
+  reading: ReadingJson;
+  chartSummary?: ChartSummaryLite | null;
+  generatedAt?: string;
+  rawFallback?: string;
+};
+
 export function ReadingPage() {
   const defaultLang = useAuthStore((s) => s.language);
+  const baseId = useId();
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [readingView, setReadingView] = useState<ReadingViewModel | null>(null);
   const [form, setForm] = useState({
     name: '',
     dob: '',
@@ -37,7 +52,7 @@ export function ReadingPage() {
     e.preventDefault();
     setLoading(true);
     setSubmitError(null);
-    setResult(null);
+    setReadingView(null);
     try {
       const body: ReadingRequest = {
         ...form,
@@ -46,15 +61,24 @@ export function ReadingPage() {
         language: form.language || defaultLang,
       };
       const out = await generateReading(body);
-      const payload = out.data as Record<string, unknown> | undefined;
-      const reading = payload?.reading;
-      const text =
-        typeof reading === 'string'
-          ? reading
-          : reading
-            ? JSON.stringify(reading, null, 2)
-            : JSON.stringify(payload ?? {}, null, 2);
-      setResult(text);
+      const parsed = parseReadingPayload(out as Record<string, unknown>);
+      if (parsed) {
+        setReadingView({
+          reading: parsed.reading,
+          chartSummary: parsed.chartSummary,
+          generatedAt: parsed.generatedAt,
+        });
+      } else {
+        const payload = (out as { data?: Record<string, unknown> }).data ?? (out as Record<string, unknown>);
+        const raw =
+          typeof payload?.reading === 'string'
+            ? payload.reading
+            : JSON.stringify(payload ?? out, null, 2);
+        setReadingView({
+          reading: {},
+          rawFallback: raw,
+        });
+      }
     } catch (e: unknown) {
       setSubmitError(friendlyApiError(e));
     } finally {
@@ -62,21 +86,38 @@ export function ReadingPage() {
     }
   };
 
-  if (result && !result.startsWith('Error:')) {
+  if (readingView) {
     return (
       <div className="flex h-full flex-col bg-chetya-bg">
         <header className="border-b border-chetya-border/60 bg-chetya-bg/90 px-4 py-3 backdrop-blur-md">
           <h1 className="text-[15px] font-semibold tracking-tight text-chetya-cream">Your reading</h1>
+          <p className="mt-1 text-xs text-chetya-muted">
+            Grounded in your birth data. Continue the conversation in Talk to Guru anytime.
+          </p>
         </header>
         <div className="flex-1 overflow-y-auto p-4">
-          <pre className="mx-auto max-w-4xl whitespace-pre-wrap font-mono text-sm text-chetya-cream/90">
-            {result}
-          </pre>
+          {readingView.rawFallback ? (
+            <div className="mx-auto max-w-2xl space-y-4">
+              <p className="text-sm text-chetya-muted">
+                We couldn’t lay out this reading in the usual format. Here is the raw response — try generating again
+                or contact support if this persists.
+              </p>
+              <pre className="whitespace-pre-wrap rounded-xl border border-chetya-border/60 bg-chetya-panel/20 p-4 font-mono text-xs text-chetya-cream/85">
+                {readingView.rawFallback}
+              </pre>
+            </div>
+          ) : (
+            <ReadingDisplay
+              reading={readingView.reading}
+              chartSummary={readingView.chartSummary}
+              generatedAt={readingView.generatedAt}
+            />
+          )}
         </div>
         <div className="border-t border-chetya-border p-4">
           <button
             type="button"
-            onClick={() => setResult(null)}
+            onClick={() => setReadingView(null)}
             className="rounded-xl bg-chetya-border/80 px-4 py-2 text-sm text-chetya-cream hover:bg-chetya-border"
           >
             New reading
@@ -91,26 +132,26 @@ export function ReadingPage() {
       <header className="shrink-0 border-b border-chetya-border/60 bg-chetya-bg/90 px-4 py-3 backdrop-blur-md">
         <h1 className="text-[15px] font-semibold tracking-tight text-chetya-cream">Birth chart reading</h1>
         <p className="mt-1 text-xs leading-relaxed text-chetya-muted">
-          Details are saved to your account for guru chat. Requires Google Maps API for place lookup on the
-          server.
+          Your chart is saved to your account so Guru can answer using the same calculations. Place lookup uses Google
+          Maps on the server.
         </p>
       </header>
-      <form
-        onSubmit={submit}
-        className="flex-1 overflow-y-auto p-4"
-      >
+      <form onSubmit={submit} className="flex-1 overflow-y-auto p-4">
         <div className="mx-auto max-w-2xl space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name *">
+            <Field label="Full name *" fieldId={`${baseId}-name`}>
               <input
+                id={`${baseId}-name`}
                 required
+                autoComplete="name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="input"
               />
             </Field>
-            <Field label="Age *">
+            <Field label="Age *" fieldId={`${baseId}-age`}>
               <input
+                id={`${baseId}-age`}
                 required
                 type="number"
                 min={1}
@@ -122,8 +163,9 @@ export function ReadingPage() {
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date of birth * (DD/MM/YYYY)">
+            <Field label="Date of birth * (DD/MM/YYYY)" fieldId={`${baseId}-dob`}>
               <input
+                id={`${baseId}-dob`}
                 required
                 placeholder="15/03/1995"
                 value={form.dob}
@@ -131,8 +173,9 @@ export function ReadingPage() {
                 className="input"
               />
             </Field>
-            <Field label="Time of birth (24h)">
+            <Field label="Time of birth (24h)" fieldId={`${baseId}-tob`}>
               <input
+                id={`${baseId}-tob`}
                 placeholder="14:30"
                 value={form.tob}
                 onChange={(e) => setForm({ ...form, tob: e.target.value })}
@@ -140,8 +183,9 @@ export function ReadingPage() {
               />
             </Field>
           </div>
-          <Field label="Birth place *">
+          <Field label="Birth place *" fieldId={`${baseId}-place`}>
             <input
+              id={`${baseId}-place`}
               required
               placeholder="City, Country"
               value={form.place}
@@ -149,16 +193,18 @@ export function ReadingPage() {
               className="input"
             />
           </Field>
-          <Field label="Current city (optional)">
+          <Field label="Current city (optional)" fieldId={`${baseId}-current`}>
             <input
+              id={`${baseId}-current`}
               value={form.current_city}
               onChange={(e) => setForm({ ...form, current_city: e.target.value })}
               className="input"
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Location">
+            <Field label="Location" fieldId={`${baseId}-loc`}>
               <select
+                id={`${baseId}-loc`}
                 value={form.location_type}
                 onChange={(e) =>
                   setForm({ ...form, location_type: e.target.value as ReadingRequest['location_type'] })
@@ -170,8 +216,9 @@ export function ReadingPage() {
                 <option value="abroad">Abroad</option>
               </select>
             </Field>
-            <Field label="Situation">
+            <Field label="Situation" fieldId={`${baseId}-sit`}>
               <select
+                id={`${baseId}-sit`}
                 value={form.financial_situation}
                 onChange={(e) => setForm({ ...form, financial_situation: e.target.value })}
                 className="input"
@@ -184,8 +231,9 @@ export function ReadingPage() {
                 <option value="retired">Retired</option>
               </select>
             </Field>
-            <Field label="Budget level">
+            <Field label="Budget level" fieldId={`${baseId}-budget`}>
               <select
+                id={`${baseId}-budget`}
                 value={form.financial_level}
                 onChange={(e) =>
                   setForm({ ...form, financial_level: e.target.value as ReadingRequest['financial_level'] })
@@ -198,8 +246,9 @@ export function ReadingPage() {
               </select>
             </Field>
           </div>
-          <Field label="Main concern">
+          <Field label="Main concern" fieldId={`${baseId}-concern`}>
             <select
+              id={`${baseId}-concern`}
               value={form.main_concern}
               onChange={(e) => setForm({ ...form, main_concern: e.target.value })}
               className="input"
@@ -211,24 +260,36 @@ export function ReadingPage() {
               ))}
             </select>
           </Field>
-          <Field label="Specific question (optional)">
+          <Field label="Specific question (optional)" fieldId={`${baseId}-q`}>
             <textarea
+              id={`${baseId}-q`}
               rows={3}
               value={form.specific_question}
               onChange={(e) => setForm({ ...form, specific_question: e.target.value })}
               className="input resize-y"
             />
           </Field>
-          <Field label="Reading language">
-            <input
+          <Field label="Reading language" fieldId={`${baseId}-lang`}>
+            <select
+              id={`${baseId}-lang`}
               value={form.language}
               onChange={(e) => setForm({ ...form, language: e.target.value })}
               className="input"
-              placeholder="en, hi, hinglish…"
-            />
+              aria-label="Language for the generated reading"
+            >
+              {APP_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
           </Field>
           {submitError && (
-            <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm leading-relaxed text-red-200">
+            <p
+              className="rounded-lg bg-red-950/40 px-3 py-2 text-sm leading-relaxed text-red-200"
+              role="alert"
+              aria-live="polite"
+            >
               {submitError}
             </p>
           )}
@@ -245,10 +306,12 @@ export function ReadingPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, fieldId, children }: { label: string; fieldId: string; children: ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-chetya-muted">{label}</label>
+      <label htmlFor={fieldId} className="mb-1 block text-xs font-medium text-chetya-muted">
+        {label}
+      </label>
       {children}
     </div>
   );

@@ -286,13 +286,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           .then(({ remaining }) => setGuestRemaining(remaining))
           .catch(() => {});
       } else {
-        setMessages([
-          ...next,
-          {
-            role: 'assistant',
-            content: msg,
-          },
-        ]);
+        setMessages(next);
       }
     } finally {
       setLoading(false);
@@ -582,7 +576,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                   </div>
                 )}
                 {err && (
-                  <p className="rounded-xl border border-red-500/30 bg-red-950/35 px-4 py-3 text-sm text-red-200/95">
+                  <p
+                    role="alert"
+                    aria-live="polite"
+                    className="rounded-xl border border-red-500/30 bg-red-950/35 px-4 py-3 text-sm text-red-200/95"
+                  >
                     {err}
                   </p>
                 )}
@@ -602,6 +600,13 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                     disabled={loading || !apis.listen}
                     title={apis.listen ? (isListening ? 'Stop listening' : 'Speak') : 'Voice not supported'}
                     aria-pressed={isListening}
+                    aria-label={
+                      !apis.listen
+                        ? 'Voice input not supported in this browser'
+                        : isListening
+                          ? 'Stop listening'
+                          : 'Speak your message'
+                    }
                     className={`mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] transition-all duration-200 disabled:opacity-35 ${
                       isListening
                         ? 'chetya-mic-live bg-chetya-gold/20 text-chetya-gold ring-1 ring-chetya-gold/40'

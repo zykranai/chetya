@@ -576,7 +576,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
               ? `Free trial · ${guestRemaining ?? '…'} / ${GUEST_PROMPT_LIMIT} questions · ${voiceConvoMode ? 'Voice chat: speak, pause — we send & reply aloud' : 'Use mic or type'}`
               : voiceConvoMode
                 ? 'Voice chat: tap mic → speak → pause; Guru replies aloud (browser voices)'
-                : 'Chart-grounded guidance — voice or text'}
+                : 'Just you and Guru — turn by turn, grounded in your chart when saved'}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -779,8 +779,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 </h2>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-chetya-muted">
                   {guest
-                    ? `You have ${GUEST_PROMPT_LIMIT} free questions in this trial — replies are not saved or remembered after you leave. Use the optional situation note below so Guru can mirror your real constraints; sign in for chart-grounded depth, voice, and saved threads.`
-                    : 'Ask about decisions, timing, or clarity. Add a short situation note below (work, family, city) so replies stay practical. Save a birth chart reading for full chart grounding — then use the mic or type here.'}
+                    ? `You have ${GUEST_PROMPT_LIMIT} free turns in this trial — a direct back-and-forth with Guru; chats aren't saved after you leave. Add the optional situation note so replies fit your life; sign in for chart-grounded depth, voice, and saved threads.`
+                    : 'Talk like you would with someone across the table — decisions, timing, doubts. A short situation note below keeps it practical. Save a birth chart reading so Guru can anchor specifics; mic or type.'}
                 </p>
               </div>
             )}

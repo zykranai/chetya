@@ -109,12 +109,12 @@ async def run_astro_chat(
         )
         preview = last_user[:280] + ("…" if len(last_user) > 280 else "")
         return (
-            f"{nm}, I'm listening — thank you for trusting me with what's on your mind.\n\n"
-            f"You shared: «{preview}»\n\n"
+            f"{nm}, I'm right here with you — thanks for saying this.\n\n"
+            f"You mentioned: «{preview}»\n\n"
             f"{chart_note}\n\n"
-            "Here's something steady you can hold today: take three slow breaths, then do one small honest thing "
-            "(send one message you've been avoiding, take a ten-minute walk, say no once if you've been overgiving). "
-            "Agency stays yours — the sky sketches weather; you still steer the boat."
+            "Let's keep it simple today: three slow breaths, then one small honest step you've been putting off "
+            "(one message, one walk, one clear boundary). "
+            "I'm not here to lecture — only to walk beside you. The sky sketches weather; you still steer."
         )
 
     client = anthropic.Anthropic(api_key=anthropic_key)
@@ -123,7 +123,7 @@ async def run_astro_chat(
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
-        temperature=0.88,
+        temperature=0.84,
         system=system,
         messages=api_messages,
     )

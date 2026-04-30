@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { APP_LANGUAGES } from '@/constants/languages';
 import {
   bcp47ForAppLanguage,
+  ensureVoicesLoaded,
   speechApisSupported,
   startListening,
   speakAloud,
@@ -26,6 +27,7 @@ import { friendlyApiError } from '@/lib/apiErrors';
 
 const SESSION_STORAGE_KEY = 'chetya_chat_session';
 const VOICE_REPLY_KEY = 'chetya_voice_reply_auto';
+const VOICE_CONVO_KEY = 'chetya_voice_convo';
 const LIFE_CONTEXT_STORAGE_KEY = 'chetya_life_context_note';
 
 function localCalendarDay(): string {
@@ -145,9 +147,18 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   const [voiceReplyAuto, setVoiceReplyAuto] = useState(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_REPLY_KEY) === '1' : false
   );
+  const [voiceConvoMode, setVoiceConvoMode] = useState(() =>
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_CONVO_KEY) === '1' : false
+  );
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const stopListenRef = useRef<(() => void) | null>(null);
+  const inputMirrorRef = useRef('');
+  const loadingRef = useRef(false);
+  const guestExhaustedRef = useRef(false);
+  const voiceConvoModeRef = useRef(false);
+  const voiceAutosendTimerRef = useRef<number | null>(null);
+  const sendLatestRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
   const authLanguage = useAuthStore((s) => s.language);
   const language = guest ? guestLang : authLanguage;
   const userId = useAuthStore((s) => s.userId);
@@ -159,6 +170,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   const [dailyText, setDailyText] = useState<string | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyErr, setDailyErr] = useState<string | null>(null);
+
+  const guestExhausted = guest && guestRemaining === 0;
 
   const refreshSessions = useCallback(async () => {
     if (guest) return;
@@ -261,6 +274,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  inputMirrorRef.current = input;
+  loadingRef.current = loading;
+  voiceConvoModeRef.current = voiceConvoMode;
+  guestExhaustedRef.current = guestExhausted;
+
   useEffect(() => {
     if (typeof sessionStorage === 'undefined') return;
     try {
@@ -323,6 +341,16 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     if (!on) stopSpeaking();
   };
 
+  const setVoiceConvoPersist = (on: boolean) => {
+    setVoiceConvoMode(on);
+    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(VOICE_CONVO_KEY, on ? '1' : '0');
+    if (on) {
+      setVoiceReplyAuto(true);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(VOICE_REPLY_KEY, '1');
+      void ensureVoicesLoaded();
+    }
+  };
+
   const toggleMic = () => {
     if (!apis.listen) {
       setErr('Voice input needs Chrome / Edge / Safari (desktop) with microphone access.');
@@ -337,6 +365,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     }
     setErr(null);
     stopSpeaking();
+    if (voiceAutosendTimerRef.current !== null) {
+      window.clearTimeout(voiceAutosendTimerRef.current);
+      voiceAutosendTimerRef.current = null;
+    }
+    void ensureVoicesLoaded();
     const langTag = bcp47ForAppLanguage(language);
     stopListenRef.current = startListening(langTag, {
       onUpdate: (t) => setInput(t),
@@ -348,6 +381,16 @@ export function ChatPage({ guest = false }: ChatPageProps) {
       onEnd: () => {
         setIsListening(false);
         stopListenRef.current = null;
+        if (voiceAutosendTimerRef.current !== null) {
+          window.clearTimeout(voiceAutosendTimerRef.current);
+        }
+        voiceAutosendTimerRef.current = window.setTimeout(() => {
+          voiceAutosendTimerRef.current = null;
+          if (!voiceConvoModeRef.current) return;
+          const t = inputMirrorRef.current.trim();
+          if (!t || loadingRef.current || guestExhaustedRef.current) return;
+          void sendLatestRef.current(t);
+        }, 340);
       },
     });
     setIsListening(true);
@@ -358,11 +401,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
       setErr('Read-aloud needs a browser that supports speech synthesis.');
       return;
     }
-    speakAloud(content, bcp47ForAppLanguage(language));
+    void speakAloud(content, bcp47ForAppLanguage(language));
   };
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (textOverride?: string) => {
+    const text = (textOverride ?? inputMirrorRef.current).trim();
     if (!text || loading) return;
     if (guest && guestRemaining === 0) return;
     setErr(null);
@@ -376,18 +419,20 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     setMessages(next);
     setInput('');
     setLoading(true);
+    const speakReply = apis.speak && (voiceReplyAuto || voiceConvoMode);
     try {
       if (guest) {
         const res = await sendGuestChat(next, language, lifeContext);
         setMessages([...next, res.message]);
         setGuestRemaining(res.guest_prompts_remaining);
+        if (speakReply) void speakAloud(res.message.content, bcp47ForAppLanguage(language));
       } else {
         const res = await sendChat(next, chatSessionId, lifeContext);
         persistSessionId(res.session_id);
         const updated = [...next, res.message];
         setMessages(updated);
         void refreshSessions();
-        if (voiceReplyAuto && apis.speak) speakAloud(res.message.content, bcp47ForAppLanguage(language));
+        if (speakReply) void speakAloud(res.message.content, bcp47ForAppLanguage(language));
       }
     } catch (e: unknown) {
       const msg = friendlyApiError(e);
@@ -405,6 +450,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     }
   };
 
+  sendLatestRef.current = send;
+
   const onLangChange = async (code: string) => {
     if (guest) {
       setGuestLang(code);
@@ -421,6 +468,10 @@ export function ChatPage({ guest = false }: ChatPageProps) {
 
   const startNewChat = () => {
     stopSpeaking();
+    if (voiceAutosendTimerRef.current !== null) {
+      window.clearTimeout(voiceAutosendTimerRef.current);
+      voiceAutosendTimerRef.current = null;
+    }
     stopListenRef.current?.();
     stopListenRef.current = null;
     setIsListening(false);
@@ -477,8 +528,6 @@ export function ChatPage({ guest = false }: ChatPageProps) {
     </div>
   );
 
-  const guestExhausted = guest && guestRemaining === 0;
-
   const dismissDailyGlimpse = () => {
     if (!userId || typeof sessionStorage === 'undefined') return;
     try {
@@ -524,8 +573,10 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           </h1>
           <p className="hidden text-[11px] text-chetya-muted md:block">
             {guest
-              ? `Free trial · ${guestRemaining ?? '…'} / ${GUEST_PROMPT_LIMIT} questions left · chats not saved`
-              : 'Chart-grounded guidance — voice or text'}
+              ? `Free trial · ${guestRemaining ?? '…'} / ${GUEST_PROMPT_LIMIT} questions · ${voiceConvoMode ? 'Voice chat: speak, pause — we send & reply aloud' : 'Use mic or type'}`
+              : voiceConvoMode
+                ? 'Voice chat: tap mic → speak → pause; Guru replies aloud (browser voices)'
+                : 'Chart-grounded guidance — voice or text'}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -545,19 +596,61 @@ export function ChatPage({ guest = false }: ChatPageProps) {
               </Link>
             </>
           )}
-          {!guest && apis.speak && (
+          {apis.speak && (
             <button
               type="button"
               onClick={() => setVoiceReplyPersist(!voiceReplyAuto)}
-              title={voiceReplyAuto ? 'Turn off read-aloud' : 'Read replies aloud'}
-              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
+              disabled={voiceConvoMode}
+              title={
+                voiceConvoMode
+                  ? 'Turn off Voice chat first to disable read-aloud'
+                  : voiceReplyAuto
+                    ? 'Turn off read-aloud'
+                    : 'Read Guru replies aloud'
+              }
+              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
                 voiceReplyAuto
                   ? 'bg-chetya-gold/15 text-chetya-gold ring-1 ring-chetya-gold/30'
                   : 'text-chetya-muted hover:bg-white/[0.06] hover:text-chetya-cream'
               }`}
               aria-pressed={voiceReplyAuto}
+              aria-label={voiceReplyAuto ? 'Turn off read-aloud' : 'Read replies aloud'}
             >
               <SpeakerIcon className="h-[18px] w-[18px]" />
+            </button>
+          )}
+          {apis.listen && apis.speak && (
+            <button
+              type="button"
+              onClick={() => setVoiceConvoPersist(!voiceConvoMode)}
+              title={
+                voiceConvoMode
+                  ? 'Turn off Voice chat (manual Send again)'
+                  : 'Voice chat: after you stop speaking, message sends automatically and Guru replies aloud'
+              }
+              className={`hidden rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:inline-flex ${
+                voiceConvoMode
+                  ? 'border-chetya-gold/40 bg-chetya-gold/15 text-chetya-gold'
+                  : 'border-chetya-border/80 text-chetya-muted hover:bg-white/[0.05] hover:text-chetya-cream'
+              }`}
+              aria-pressed={voiceConvoMode}
+            >
+              Voice chat
+            </button>
+          )}
+          {apis.listen && apis.speak && (
+            <button
+              type="button"
+              onClick={() => setVoiceConvoPersist(!voiceConvoMode)}
+              className={`flex h-9 min-w-[2.25rem] items-center justify-center rounded-xl px-1 sm:hidden ${
+                voiceConvoMode
+                  ? 'bg-chetya-gold/15 text-chetya-gold ring-1 ring-chetya-gold/30'
+                  : 'text-chetya-muted hover:bg-white/[0.06] hover:text-chetya-cream'
+              }`}
+              aria-label={voiceConvoMode ? 'Turn off voice chat' : 'Turn on voice chat'}
+              title="Voice chat: speak, pause — auto-send & hear reply"
+            >
+              <span className="text-[10px] font-bold leading-none tracking-tight">VC</span>
             </button>
           )}
           <select
@@ -722,7 +815,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                         <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-chetya-muted">
                           {m.role === 'user' ? 'You' : 'Guru'}
                         </span>
-                        {m.role === 'assistant' && apis.speak && !guest && (
+                        {m.role === 'assistant' && apis.speak && (
                           <button
                             type="button"
                             onClick={() => playAssistantLine(m.content)}
@@ -786,11 +879,11 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                 />
               </details>
               <div className="shadow-composer flex items-end gap-2 rounded-[26px] border border-white/[0.08] bg-chetya-panel/95 p-2 pl-3 backdrop-blur-xl ring-1 ring-black/20 transition-shadow duration-300 focus-within:border-chetya-gold/35 focus-within:ring-2 focus-within:ring-chetya-gold/20">
-                {!guest && (
+                {apis.listen && (
                   <button
                     type="button"
                     onClick={toggleMic}
-                    disabled={loading || !apis.listen}
+                    disabled={loading || !apis.listen || guestExhausted}
                     title={apis.listen ? (isListening ? 'Stop listening' : 'Speak') : 'Voice not supported'}
                     aria-pressed={isListening}
                     aria-label={
@@ -816,7 +909,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      void send();
+                      void send(undefined);
                     }
                   }}
                   rows={1}
@@ -824,15 +917,19 @@ export function ChatPage({ guest = false }: ChatPageProps) {
                     guestExhausted
                       ? 'Sign in to continue the conversation…'
                       : isListening
-                        ? 'Listening…'
-                        : 'Message your guru…'
+                        ? voiceConvoMode
+                          ? 'Listening… pause when done — sends automatically'
+                          : 'Listening…'
+                        : voiceConvoMode && apis.listen
+                          ? 'Voice chat on: tap mic, speak, pause — or type here'
+                          : 'Message your guru…'
                   }
                   className="chetya-scroll mb-0.5 max-h-[200px] min-h-[44px] flex-1 resize-none border-0 bg-transparent py-2.5 text-[15px] leading-relaxed text-chetya-cream placeholder:text-chetya-muted/45 focus:outline-none focus:ring-0 disabled:opacity-50"
                   disabled={loading || guestExhausted}
                 />
                 <button
                   type="button"
-                  onClick={() => void send()}
+                  onClick={() => void send(undefined)}
                   disabled={loading || !input.trim() || guestExhausted}
                   aria-label="Send message"
                   className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-chetya-cream text-chetya-bg shadow-md transition-all duration-200 hover:brightness-110 disabled:bg-chetya-border disabled:text-chetya-muted disabled:shadow-none disabled:opacity-40"

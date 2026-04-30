@@ -48,17 +48,98 @@ export function stopSpeaking(): void {
   }
 }
 
-export function speakAloud(text: string, langTag: string): void {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const plain = textForSpeech(text);
-  if (!plain) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(plain);
-  u.lang = langTag;
-  u.rate = 0.92;
-  u.pitch = 1;
-  u.volume = 1;
-  window.speechSynthesis.speak(u);
+/** Some browsers populate voices asynchronously (especially Safari). */
+export function ensureVoicesLoaded(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    const synth = window.speechSynthesis;
+    if (synth.getVoices().length > 0) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      synth.removeEventListener('voiceschanged', done);
+      resolve();
+    };
+    synth.addEventListener('voiceschanged', done);
+    window.setTimeout(done, 750);
+  });
+}
+
+function scoreVoice(v: SpeechSynthesisVoice, langTag: string): number {
+  let s = 0;
+  const base = langTag.toLowerCase().split('-')[0] || 'en';
+  const vl = v.lang.toLowerCase();
+  if (vl.startsWith(base)) s += 120;
+  else if (vl.includes(base)) s += 60;
+  const bundle = `${v.name} ${v.voiceURI}`.toLowerCase();
+  if (bundle.includes('neural')) s += 45;
+  if (bundle.includes('natural') || bundle.includes('premium') || bundle.includes('enhanced')) s += 38;
+  if (bundle.includes('google')) s += 28;
+  if (bundle.includes('microsoft')) s += 22;
+  if (bundle.includes('wavenet')) s += 25;
+  return s;
+}
+
+/** Pick the most natural local voice for the language (OS / browser dependent). */
+export function pickVoiceForLanguage(langTag: string): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  let best: SpeechSynthesisVoice | null = null;
+  let bestScore = -1;
+  for (const v of voices) {
+    const sc = scoreVoice(v, langTag);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = v;
+    }
+  }
+  return best;
+}
+
+/**
+ * Speak text with a calm, conversational pace. Resolves when playback finishes or errors (never hangs).
+ */
+export function speakAloud(text: string, langTag: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    const plain = textForSpeech(text);
+    if (!plain) {
+      resolve();
+      return;
+    }
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    const speakNow = () => {
+      const voice = pickVoiceForLanguage(langTag);
+      const u = new SpeechSynthesisUtterance(plain);
+      u.lang = langTag;
+      if (voice) u.voice = voice;
+      u.rate = 0.91;
+      u.pitch = 0.97;
+      u.volume = 1;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      synth.speak(u);
+    };
+
+    void ensureVoicesLoaded().then(() => {
+      try {
+        speakNow();
+      } catch {
+        resolve();
+      }
+    });
+  });
 }
 
 type RecognitionCtor = new () => SpeechRecognition;
@@ -74,6 +155,8 @@ export type VoiceListenCallbacks = {
   onError: (message: string) => void;
   onEnd: () => void;
 };
+
+const IGNORABLE_RECOGNITION_ERRORS = new Set(['aborted']);
 
 /** Start continuous dictation until aborted via returned stop(). */
 export function startListening(langTag: string, cb: VoiceListenCallbacks): () => void {
@@ -101,13 +184,19 @@ export function startListening(langTag: string, cb: VoiceListenCallbacks): () =>
   };
 
   rec.onerror = (event: SpeechRecognitionErrorEvent) => {
-    if (event.error === 'aborted') return;
+    if (IGNORABLE_RECOGNITION_ERRORS.has(event.error)) return;
     const friendly =
       event.error === 'not-allowed'
-        ? 'Microphone permission denied — enable it in browser settings.'
+        ? 'Microphone permission denied — enable it in your browser settings.'
         : event.error === 'no-speech'
-          ? 'No speech heard — try again a little closer to the mic.'
-          : `Voice error: ${event.error}`;
+          ? 'No speech detected — tap the mic and speak again, a little closer.'
+          : event.error === 'audio-capture'
+            ? 'No microphone found — plug one in or allow access.'
+            : event.error === 'network'
+              ? 'Voice recognition needs a network connection in this browser — try again.'
+              : event.error === 'service-not-allowed'
+                ? 'Voice recognition is disabled — check browser settings.'
+                : `Voice error (${event.error}). Try again.`;
     cb.onError(friendly);
   };
 
@@ -118,7 +207,7 @@ export function startListening(langTag: string, cb: VoiceListenCallbacks): () =>
   try {
     rec.start();
   } catch {
-    cb.onError('Could not start microphone.');
+    cb.onError('Could not start microphone — try refreshing the page.');
     return () => {};
   }
 

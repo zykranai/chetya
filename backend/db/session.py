@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,14 +15,25 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _DATA_DIR = _REPO_ROOT / "data"
 _DEFAULT_SQLITE = f"sqlite:///{_DATA_DIR / 'chetya.sqlite'}"
 
+def _strip_channel_binding_param(url: str) -> str:
+    """Neon adds channel_binding=require; psycopg + some TLS stacks fail on Render — drop it."""
+    if "channel_binding" not in url.lower():
+        return url
+    parsed = urlparse(url)
+    pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "channel_binding"]
+    new_query = urlencode(pairs)
+    return urlunparse(parsed._replace(query=new_query))
+
+
 def _normalize_database_url(url: str) -> str:
     """Neon/Postgres URIs often use postgresql://; we ship psycopg3 only (no psycopg2)."""
-    u = url.strip()
+    u = url.strip().lstrip("\ufeff")  # Excel/docs BOM when pasting into Render
     if not u:
         return _DEFAULT_SQLITE
     head = u.split("://", 1)[0].lower()
     if head == "postgresql" or head == "postgres":
-        return "postgresql+psycopg://" + u.split("://", 1)[1]
+        u = "postgresql+psycopg://" + u.split("://", 1)[1]
+    u = _strip_channel_binding_param(u)
     return u
 
 

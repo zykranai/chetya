@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { generateReading, type ReadingRequest } from '@/api/client';
+import { friendlyApiError } from '@/lib/apiErrors';
 import { useAuthStore } from '@/store/authStore';
 
 const CONCERNS = [
@@ -15,6 +16,7 @@ const CONCERNS = [
 export function ReadingPage() {
   const defaultLang = useAuthStore((s) => s.language);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
@@ -34,6 +36,7 @@ export function ReadingPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setSubmitError(null);
     setResult(null);
     try {
       const body: ReadingRequest = {
@@ -53,8 +56,7 @@ export function ReadingPage() {
             : JSON.stringify(payload ?? {}, null, 2);
       setResult(text);
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { detail?: string } }; message?: string };
-      setResult(`Error: ${ax.response?.data?.detail || ax.message || 'failed'}`);
+      setSubmitError(friendlyApiError(e));
     } finally {
       setLoading(false);
     }
@@ -225,8 +227,10 @@ export function ReadingPage() {
               placeholder="en, hi, hinglish…"
             />
           </Field>
-          {result?.startsWith('Error:') && (
-            <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm text-red-200">{result}</p>
+          {submitError && (
+            <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm leading-relaxed text-red-200">
+              {submitError}
+            </p>
           )}
           <button
             type="submit"

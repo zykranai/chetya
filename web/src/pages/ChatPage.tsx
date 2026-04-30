@@ -20,6 +20,7 @@ import {
   speakAloud,
   stopSpeaking,
 } from '@/lib/voice';
+import { friendlyApiError } from '@/lib/apiErrors';
 
 const SESSION_STORAGE_KEY = 'chetya_chat_session';
 const VOICE_REPLY_KEY = 'chetya_voice_reply_auto';
@@ -277,9 +278,8 @@ export function ChatPage({ guest = false }: ChatPageProps) {
         if (voiceReplyAuto && apis.speak) speakAloud(res.message.content, bcp47ForAppLanguage(language));
       }
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { detail?: string } }; message?: string };
-      const detail = ax.response?.data?.detail || ax.message || 'Request failed';
-      setErr(typeof detail === 'string' ? detail : 'Request failed');
+      const msg = friendlyApiError(e);
+      setErr(msg);
       if (guest) {
         setMessages(prevMessages);
         void fetchGuestQuota()
@@ -290,8 +290,7 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           ...next,
           {
             role: 'assistant',
-            content:
-              'Could not reach the guru. Is the API running? (Use Vite proxy `/api` or set VITE_API_URL.)',
+            content: msg,
           },
         ]);
       }

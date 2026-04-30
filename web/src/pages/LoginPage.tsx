@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { authWithEmail } from '@/api/client';
+import { friendlyApiError } from '@/lib/apiErrors';
 import { APP_LANGUAGES } from '@/constants/languages';
 import { useAuthStore } from '@/store/authStore';
 
@@ -27,8 +28,7 @@ export function LoginPage() {
     try {
       await authWithEmail(t, lang);
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { detail?: string } }; message?: string };
-      setErr(ax.response?.data?.detail || ax.message || 'Sign-in failed');
+      setErr(friendlyApiError(e));
     } finally {
       setLoading(false);
     }
@@ -121,10 +121,12 @@ export function LoginPage() {
           No email required. Replies are not saved. Sign in anytime for full chat, voice, and saved charts.
         </p>
 
-        <p className="mt-6 text-center text-xs text-chetya-muted/80">
-          Passwordless session. Set <code className="text-chetya-muted">CHETYA_JWT_SECRET</code> on the
-          server for production.
-        </p>
+        {!import.meta.env.PROD && (
+          <p className="mt-6 text-center text-xs text-chetya-muted/80">
+            Passwordless session. Set <code className="text-chetya-muted">CHETYA_JWT_SECRET</code> on the
+            server for production.
+          </p>
+        )}
       </div>
     </div>
   );

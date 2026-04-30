@@ -1,19 +1,32 @@
 import axios, { type AxiosInstance } from 'axios';
 import { useAuthStore } from '@/store/authStore';
 
-/** Dev: use Vite proxy `/api` → FastAPI. Prod: set VITE_API_URL to full backend origin. */
-const baseURL =
-  import.meta.env.VITE_API_URL?.trim() ||
-  (import.meta.env.DEV ? '/api' : 'http://localhost:8000');
+/**
+ * Production API origin. Set `VITE_API_URL` at build time (e.g. Cloudflare Pages).
+ * If unset in production, falls back to the project’s default Render API so static
+ * hosting never POSTs to the Pages origin (which returns 405).
+ */
+function resolveApiBaseURL(): string {
+  const raw = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, '') ?? '';
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    return raw;
+  }
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  return 'https://chetya.onrender.com';
+}
+
+export const API_BASE_URL = resolveApiBaseURL();
 
 export const api: AxiosInstance = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
   timeout: 120000,
 });
 
 /** Anonymous trial chat — no Bearer token (uses X-Chetya-Guest-Id). */
 export const guestApi: AxiosInstance = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
   timeout: 120000,
 });
 

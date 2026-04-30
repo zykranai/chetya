@@ -86,7 +86,7 @@ Output is **`web/dist/`**.
 2. Build command: `npm run build`.
 3. Build output directory: `dist`.
 4. Environment variable: **`VITE_API_URL`** = your API origin (no trailing slash), e.g. `https://chetya-api.onrender.com`.
-5. **SPA fallback**: add `web/dist` behavior “rewrite to `/index.html`” for client-side routes (or use **Pages → Functions / _routes** as documented by Cloudflare).
+5. **SPA routing**: With Vite’s default output there is **no** root `404.html`, so Pages treats the site as an SPA and maps unknown paths to the shell automatically — **no** `_redirects` catch‑all is needed (and `/* → /index.html 200` is rejected as an infinite loop).
 
 ### Vercel
 
@@ -99,7 +99,7 @@ Output is **`web/dist/`**.
 
 1. Base directory: `web`, build: `npm run build`, publish: `dist`.
 2. Set **`VITE_API_URL`** in Netlify UI.
-3. `web/public/_redirects` ships `/* /index.html 200` for SPA routing.
+3. SPA routing: `web/netlify.toml` (do **not** use `public/_redirects` with `/* → /index.html` on Cloudflare Pages — it breaks deploys; Pages enables SPA fallback automatically when there is no root `404.html`).
 
 ---
 

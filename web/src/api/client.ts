@@ -111,6 +111,29 @@ export async function patchLanguage(language: string) {
   return data;
 }
 
+export type MeResponse = {
+  success?: boolean;
+  user_id: string;
+  email?: string | null;
+  language?: string | null;
+  has_saved_chart?: boolean;
+};
+
+export async function fetchMe(): Promise<MeResponse> {
+  const { data } = await api.get<MeResponse>('/me');
+  return data;
+}
+
+/** Signed-in only; requires saved chart or API returns 404. */
+export async function fetchDailyReading(userId: string, language: string): Promise<string> {
+  const { data } = await api.get<{ success?: boolean; data?: { daily?: string } }>(
+    `/reading/daily/${encodeURIComponent(userId)}`,
+    { params: { language } }
+  );
+  const d = data.data?.daily;
+  return typeof d === 'string' ? d.trim() : '';
+}
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export type ChatResponse = {

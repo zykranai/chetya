@@ -7,6 +7,8 @@ import {
   fetchGuestQuota,
   fetchChatSessions,
   fetchChatMessages,
+  fetchMe,
+  fetchDailyReading,
   type ChatMessage,
   type ChatSessionSummary,
   GUEST_PROMPT_LIMIT,
@@ -25,6 +27,22 @@ import { friendlyApiError } from '@/lib/apiErrors';
 const SESSION_STORAGE_KEY = 'chetya_chat_session';
 const VOICE_REPLY_KEY = 'chetya_voice_reply_auto';
 const LIFE_CONTEXT_STORAGE_KEY = 'chetya_life_context_note';
+
+function localCalendarDay(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function dailyDismissStorageKey(userId: string): string {
+  return `chetya_daily_dismiss_${userId}_${localCalendarDay()}`;
+}
+
+function dailyBodyCacheKey(userId: string, lang: string): string {
+  return `chetya_daily_body_${userId}_${lang}_${localCalendarDay()}`;
+}
 
 function formatSessionTime(iso: string | null): string {
   if (!iso) return '';
@@ -132,8 +150,15 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   const stopListenRef = useRef<(() => void) | null>(null);
   const authLanguage = useAuthStore((s) => s.language);
   const language = guest ? guestLang : authLanguage;
+  const userId = useAuthStore((s) => s.userId);
   const userEmail = useAuthStore((s) => s.email);
   const userInitial = guest ? '?' : (userEmail?.trim()?.charAt(0)?.toUpperCase() ?? '?');
+
+  const [hasSavedChart, setHasSavedChart] = useState<boolean | null>(null);
+  const [dailyDismissed, setDailyDismissed] = useState(false);
+  const [dailyText, setDailyText] = useState<string | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyErr, setDailyErr] = useState<string | null>(null);
 
   const refreshSessions = useCallback(async () => {
     if (guest) return;
@@ -148,6 +173,74 @@ export function ChatPage({ guest = false }: ChatPageProps) {
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  useEffect(() => {
+    if (guest || !userId || typeof sessionStorage === 'undefined') {
+      setDailyDismissed(false);
+      return;
+    }
+    try {
+      setDailyDismissed(sessionStorage.getItem(dailyDismissStorageKey(userId)) === '1');
+    } catch {
+      setDailyDismissed(false);
+    }
+  }, [guest, userId]);
+
+  const loadDailyGlimpse = useCallback(
+    async (force: boolean) => {
+      if (guest || !userId) return;
+      setDailyErr(null);
+      try {
+        const me = await fetchMe();
+        const hc = !!me.has_saved_chart;
+        setHasSavedChart(hc);
+        if (!hc) {
+          setDailyText(null);
+          return;
+        }
+        const ck = dailyBodyCacheKey(userId, language);
+        if (force && typeof sessionStorage !== 'undefined') {
+          try {
+            sessionStorage.removeItem(ck);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!force && typeof sessionStorage !== 'undefined') {
+          try {
+            const cached = sessionStorage.getItem(ck);
+            if (cached) {
+              setDailyText(cached);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        setDailyLoading(true);
+        const text = await fetchDailyReading(userId, language);
+        setDailyText(text || null);
+        if (text && typeof sessionStorage !== 'undefined') {
+          try {
+            sessionStorage.setItem(ck, text);
+          } catch {
+            /* quota */
+          }
+        }
+      } catch (e: unknown) {
+        setDailyErr(friendlyApiError(e));
+        setDailyText(null);
+      } finally {
+        setDailyLoading(false);
+      }
+    },
+    [guest, userId, language]
+  );
+
+  useEffect(() => {
+    if (guest || !userId || dailyDismissed) return;
+    void loadDailyGlimpse(false);
+  }, [guest, userId, dailyDismissed, loadDailyGlimpse]);
 
   useEffect(() => {
     if (!guest) return;
@@ -386,6 +479,23 @@ export function ChatPage({ guest = false }: ChatPageProps) {
 
   const guestExhausted = guest && guestRemaining === 0;
 
+  const dismissDailyGlimpse = () => {
+    if (!userId || typeof sessionStorage === 'undefined') return;
+    try {
+      sessionStorage.setItem(dailyDismissStorageKey(userId), '1');
+    } catch {
+      /* ignore */
+    }
+    setDailyDismissed(true);
+  };
+
+  const showDailyStrip =
+    !guest &&
+    !!userId &&
+    !dailyDismissed &&
+    hasSavedChart === true &&
+    (dailyLoading || !!dailyErr || !!dailyText);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-chetya-bg">
       {/* Top bar — minimal, ChatGPT-like */}
@@ -491,6 +601,48 @@ export function ChatPage({ guest = false }: ChatPageProps) {
           )}
         </div>
       </header>
+
+      {showDailyStrip && (
+        <section
+          className="shrink-0 border-b border-chetya-border/50 bg-gradient-to-r from-chetya-gold/[0.07] via-chetya-panel/30 to-transparent px-3 py-3 md:px-4"
+          aria-label="Today's glimpse"
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-chetya-gold/90">
+                Today's glimpse
+              </p>
+              {dailyLoading && !dailyText ? (
+                <p className="mt-1 text-sm text-chetya-muted">Pulling today's note from your chart…</p>
+              ) : dailyErr ? (
+                <p className="mt-1 text-sm text-red-200/90">{dailyErr}</p>
+              ) : (
+                <p className="mt-1 whitespace-pre-wrap text-[14px] leading-relaxed text-chetya-cream/95">{dailyText}</p>
+              )}
+              <p className="mt-2 text-[10px] leading-relaxed text-chetya-muted/75">
+                Optional rhythm — not a command. Cross-check big choices with real-world facts.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-row gap-2 sm:flex-col sm:items-end">
+              <button
+                type="button"
+                onClick={() => void loadDailyGlimpse(true)}
+                disabled={dailyLoading}
+                className="rounded-lg border border-chetya-border/70 px-3 py-1.5 text-xs font-medium text-chetya-cream/90 transition-colors hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={dismissDailyGlimpse}
+                className="rounded-lg px-3 py-1.5 text-xs text-chetya-muted transition-colors hover:bg-white/[0.05] hover:text-chetya-cream"
+              >
+                Hide until tomorrow
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="relative flex min-h-0 flex-1">
         {/* Desktop session rail */}

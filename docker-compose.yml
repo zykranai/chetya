@@ -1,0 +1,19 @@
+# Optional Postgres for local/staging parity with production (Neon, Supabase, Railway free tiers).
+# Usage: docker compose up -d db
+# Then set DATABASE_URL=postgresql+psycopg://chetya:chetya@localhost:5432/chetya
+# (pip install 'psycopg[binary]' for SQLAlchemy.)
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chetya
+      POSTGRES_PASSWORD: chetya
+      POSTGRES_DB: chetya
+    ports:
+      - "5432:5432"
+    volumes:
+      - chetya_pg:/var/lib/postgresql/data
+
+volumes:
+  chetya_pg:

@@ -1,0 +1,17 @@
+export const APP_LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिंदी (Hindi)' },
+  { code: 'hinglish', label: 'Hinglish' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'bn', label: 'Bangla' },
+  { code: 'mr', label: 'Marathi' },
+  { code: 'gu', label: 'Gujarati' },
+  { code: 'kn', label: 'Kannada' },
+  { code: 'ml', label: 'Malayalam' },
+  { code: 'pa', label: 'Punjabi' },
+  { code: 'ur', label: 'Urdu' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'ar', label: 'Arabic' },
+] as const;

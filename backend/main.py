@@ -1,11 +1,11 @@
 from contextlib import asynccontextmanager
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 import uuid
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from jwt.exceptions import InvalidTokenError
 
 from .auth_tokens import create_session_token, refresh_language_claim, resolve_user_from_bearer
@@ -64,8 +64,16 @@ class LanguagePatchRequest(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    role: str  # user | assistant
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=120_000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_nonempty(cls, v: str) -> str:
+        t = v.strip()
+        if not t:
+            raise ValueError("message content cannot be empty")
+        return t
 
 
 class ChatRequest(BaseModel):

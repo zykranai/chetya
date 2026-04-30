@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate docs/Chetya_Prompts_and_Product_Guide.pdf from backend prompts + roadmap text.
+Generate docs/_generated/Chetya_Prompts_and_Product_Guide.pdf from backend prompts + roadmap text (local only; folder is gitignored).
 Run from repo root: python3 scripts/generate_prompts_pdf.py
 Requires: pip install reportlab
 """
@@ -32,7 +32,9 @@ except ImportError as e:
     print("Install reportlab: pip install reportlab", file=sys.stderr)
     raise e
 
-OUTPUT = os.path.join(ROOT, "docs", "Chetya_Prompts_and_Product_Guide.pdf")
+_GEN_DIR = os.path.join(ROOT, "docs", "_generated")
+os.makedirs(_GEN_DIR, exist_ok=True)
+OUTPUT = os.path.join(_GEN_DIR, "Chetya_Prompts_and_Product_Guide.pdf")
 
 
 FUTURE_PROMPTS_GUIDE = """

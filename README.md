@@ -1,21 +1,41 @@
 # Chetya
 
-Situation-aware Vedic astrology engine: chart computation, structured readings, and a multilingual guru chat grounded in stored facts.
+**Chetya** is a situation-aware Vedic astrology product: it computes a sidereal chart and supporting timing layers, stores a canonical **`computed_facts`** bundle per user, and drives **structured readings** plus **multilingual guru chat** that must ground astronomical claims in that bundle—not in model improvisation.
 
-## Layout
+Tagline in-app: *Not your kundli. Your life.*
 
-| Path | Role |
-|------|------|
-| `backend/` | FastAPI app (`backend.main:app`), Swiss Ephemeris chart pipeline, SQL persistence (SQLite by default), optional Supabase mirror |
-| `web/` | React + Vite + Tailwind client |
-| `mobile/` | Expo / React Native client (optional) |
-| `docs/` | Product / prompts reference PDF (generated via `scripts/generate_prompts_pdf.py`) |
-| `scripts/` | Helper scripts |
-| `data/` | Local SQLite file (created at runtime; not committed) |
+## Who this is for
 
-## Backend
+- People who want **chart-grounded guidance** tied to **real-life context** (work, money, family, mobility), without fear-selling remedies.
+- Teams extending an auditable pipeline where **software calculations** and **model wording** are clearly separated.
 
-Python 3.10+ recommended (3.9 may work with current dependency pins).
+## What ships in this repo
+
+| Area | Description |
+|------|--------------|
+| **Backend** (`backend/`) | FastAPI API (`backend.main:app`), Swiss Ephemeris chart pipeline, SQL persistence (SQLite default; Postgres via `DATABASE_URL`), optional Supabase mirror. |
+| **Web** (`web/`) | React + Vite + Tailwind client (login, reading intake, guru chat with optional mic/read‑aloud). |
+| **Mobile** (`mobile/`) | Expo / React Native client (same API; configure `EXPO_PUBLIC_API_URL`). |
+| **Docs** (`docs/`) | **Technical references**: shastra alignment, ephemeris pipeline, validity stance—not duplicate onboarding prose (see below). |
+| **Scripts** (`scripts/`) | `smoke_api.py` API smoke test; `generate_prompts_pdf.py` optional local PDF export. |
+
+Generated SQLite DB lives under `./data/` at runtime (not committed).
+
+## Single onboarding document policy
+
+- **`README.md` (this file)** is the **only** top-level product/overview doc everyone reads first.
+- **Deeper technical writing** (shastras, calculation validity, ephemeris notes, model guardrails) lives under **`docs/`** as Markdown. Start at [`docs/CALCULATION_OVERVIEW.md`](docs/CALCULATION_OVERVIEW.md).
+
+Do **not** add competing root-level `CONTRIBUTING.md`, `PROJECT.md`, etc.—extend **README** or **`docs/`** instead.
+
+## Repository hygiene (commits & attribution)
+
+- **Never** put IDE or assistant attribution in commit messages or source files (e.g. “Made by …”, tool/vendor plugs). Commits should state **what** changed and **why**, in neutral engineering language.
+- The codebase must remain **free of promotional markers** tied to editors or codegen tools.
+
+## Backend setup
+
+Python **3.10+** recommended (3.9 may work with current pins).
 
 ```bash
 cd backend
@@ -24,22 +44,26 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Run from the **repository root** so imports resolve:
+Run the API from the **repository root** so imports resolve:
 
 ```bash
 export PYTHONPATH=.
 python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Environment variables (see `.env.example`):
+### Environment variables
 
-- `DATABASE_URL` — omit for default SQLite under `./data/chetya.sqlite`
-- `CHETYA_JWT_SECRET` — required in production for JWT auth
-- `GOOGLE_MAPS_API_KEY` — geocoding for birth place
-- `ANTHROPIC_API_KEY` — LLM for readings and chat (optional; deterministic fallbacks exist)
-- `SUPABASE_*` — optional profile/chart mirror
+See `.env.example` / `backend/.env.example`:
 
-## Web
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Omit for default SQLite `./data/chetya.sqlite` |
+| `CHETYA_JWT_SECRET` | **Required in production** for JWT minting |
+| `GOOGLE_MAPS_API_KEY` | Birth-place geocoding |
+| `ANTHROPIC_API_KEY` | LLM readings + chat (optional; deterministic fallback exists) |
+| `SUPABASE_*` | Optional mirror for profiles/charts |
+
+## Web setup
 
 ```bash
 cd web
@@ -47,13 +71,31 @@ npm install
 npm run dev
 ```
 
-Dev server proxies `/api` to `http://127.0.0.1:8000` (see `web/vite.config.ts`). Set `VITE_API_URL` when the API is hosted elsewhere.
+Dev uses Vite proxy **`/api` → `http://127.0.0.1:8000`**. Production/static hosts must set **`VITE_API_URL`** to the real API origin.
+
+## Smoke test (API)
+
+```bash
+PYTHONPATH=. CHETYA_JWT_SECRET=test-smoke backend/.venv/bin/python scripts/smoke_api.py
+```
+
+Covers `/health`, auth, `/me`, `/chat`, and chat session history. Does **not** exercise Google geocoding or the full LLM path (offline chat when no Anthropic key).
+
+Full QA still requires browser/mobile flows plus optional keys above.
+
+## Optional PDF export
+
+```bash
+python3 scripts/generate_prompts_pdf.py
+```
+
+Writes to **`docs/_generated/`** (ignored by git). Useful for offline prompt review—not required to run the app.
 
 ## Ops notes
 
-- PostgreSQL: set `DATABASE_URL` (see `docker-compose.yml` for a local template).
-- Do not commit `.env`, `./data/*.sqlite`, `node_modules`, or `.venv`.
+- PostgreSQL locally or hosted: see `docker-compose.yml`; set `DATABASE_URL`.
+- Never commit `.env`, `*.sqlite`, `node_modules`, `.venv`, or `.tools/`.
 
 ## Versioning
 
-Git tags follow `vMAJOR.MINOR.PATCH` for releases (e.g. `v0.1.0`).
+Git tags: **`vMAJOR.MINOR.PATCH`** (e.g. `v0.1.0`).

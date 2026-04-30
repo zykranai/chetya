@@ -14,6 +14,7 @@ import { ChatMessage, sendChatMessage } from '../services/api';
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const listRef = useRef<FlatList>(null);
@@ -27,8 +28,9 @@ export default function ChatScreen() {
     setInput('');
     setLoading(true);
     try {
-      const assistant = await sendChatMessage(next);
-      setMessages([...next, assistant]);
+      const data = await sendChatMessage(next, sessionId);
+      setSessionId(data.session_id);
+      setMessages([...next, data.message]);
     } catch {
       setMessages([
         ...next,

@@ -1,3 +1,6 @@
+# Generated docs (optional PDF export)
+docs/_generated/
+
 # Local DB & secrets
 /data/
 *.sqlite

@@ -55,6 +55,7 @@ export async function patchLanguage(language: string) {
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export type ChatResponse = {
+  success?: boolean;
   message: ChatMessage;
   session_id: string;
 };
@@ -70,15 +71,15 @@ export async function sendChat(messages: ChatMessage[], sessionId?: string | nul
 export type ChatSessionSummary = { id: string; title: string; updated_at: string | null };
 
 export async function fetchChatSessions() {
-  const { data } = await api.get<{ sessions: ChatSessionSummary[] }>('/chat/sessions');
-  return data.sessions;
+  const { data } = await api.get<{ sessions?: ChatSessionSummary[] }>('/chat/sessions');
+  return data.sessions ?? [];
 }
 
 export async function fetchChatMessages(sessionId: string) {
-  const { data } = await api.get<{ messages: ChatMessage[] }>(
+  const { data } = await api.get<{ messages?: ChatMessage[] }>(
     `/chat/sessions/${encodeURIComponent(sessionId)}/messages`
   );
-  return data.messages;
+  return data.messages ?? [];
 }
 
 export async function generateReading(body: ReadingRequest) {

@@ -67,11 +67,16 @@ export interface ChatMessage {
   content: string;
 }
 
-export async function sendChatMessage(messages: ChatMessage[]) {
-  const res = await api.post<{ success: boolean; message: ChatMessage }>('/chat', {
+export async function sendChatMessage(messages: ChatMessage[], sessionId?: string | null) {
+  const res = await api.post<{
+    success?: boolean;
+    message: ChatMessage;
+    session_id: string;
+  }>('/chat', {
     messages,
+    session_id: sessionId || undefined,
   });
-  return res.data.message;
+  return res.data;
 }
 
 export const generateReading = async (request: ReadingRequest) => {

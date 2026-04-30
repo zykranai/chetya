@@ -21,7 +21,13 @@ export const useAuthStore = create<AuthState>()(
       setSession: (token, language, email, userId) =>
         set({ token, language, email, userId }),
       setLanguage: (language) => set({ language }),
-      logout: () => set({ token: null, email: null, userId: null }),
+      logout: () => {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.removeItem('chetya_chat_session');
+          sessionStorage.removeItem('chetya_voice_reply_auto');
+        }
+        set({ token: null, email: null, userId: null });
+      },
     }),
     { name: 'chetya-web-auth' }
   )

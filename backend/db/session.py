@@ -14,7 +14,18 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _DATA_DIR = _REPO_ROOT / "data"
 _DEFAULT_SQLITE = f"sqlite:///{_DATA_DIR / 'chetya.sqlite'}"
 
-DATABASE_URL = os.getenv("DATABASE_URL", _DEFAULT_SQLITE)
+def _normalize_database_url(url: str) -> str:
+    """Neon/Postgres URIs often use postgresql://; we ship psycopg3 only (no psycopg2)."""
+    u = url.strip()
+    if not u:
+        return _DEFAULT_SQLITE
+    head = u.split("://", 1)[0].lower()
+    if head == "postgresql" or head == "postgres":
+        return "postgresql+psycopg://" + u.split("://", 1)[1]
+    return u
+
+
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL") or _DEFAULT_SQLITE)
 
 _CONNECT_ARGS: dict = {}
 if DATABASE_URL.startswith("sqlite"):
